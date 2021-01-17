@@ -1,6 +1,7 @@
 package donkie.bungeegcloud;
 
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 
 import com.google.api.services.compute.model.Instance;
 
@@ -16,13 +17,13 @@ public class BungeeGCloud extends Plugin {
 
     @Override
     public void onEnable() {
-        // You should not put an enable message in your plugin.
-        // BungeeCord already does so
-        getLogger().info("BungeeGClud onEnable");
+        try {
+            compute = new ComputeEngineWrapper(PROJECT_ID);
 
-        getProxy().getPluginManager().registerListener(this, new Events(this));
-
-        compute = new ComputeEngineWrapper(getLogger(), PROJECT_ID);
+            getProxy().getPluginManager().registerListener(this, new Events(this));
+        } catch (GeneralSecurityException | IOException e) {
+            getLogger().warning(e.toString());
+        }
     }
 
     public boolean isInstanceRunning() throws IOException {
@@ -32,13 +33,12 @@ public class BungeeGCloud extends Plugin {
                 || status.equals("TERMINATED"));
     }
 
-    public void startInstance() throws IOException {
-        compute.startInstance(ZONE_NAME, INSTANCE_NAME).run();
+    public void startInstance() throws IOException, InterruptedException {
+        compute.startInstance(ZONE_NAME, INSTANCE_NAME);
     }
 
     public String getInstanceIP() throws IOException {
-        Instance instance = compute.getInstance(ZONE_NAME, INSTANCE_NAME);
-        return ComputeEngineWrapper.getInstanceExternalIP(instance);
+        return ComputeEngineWrapper.getInstanceExternalIP(compute.getInstance(ZONE_NAME, INSTANCE_NAME));
     }
 
     public int getServerPort() {
