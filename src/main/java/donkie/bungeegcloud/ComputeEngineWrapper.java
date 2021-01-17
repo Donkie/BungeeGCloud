@@ -3,17 +3,12 @@ package donkie.bungeegcloud;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Logger;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
-import com.google.api.client.http.HttpTransport;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
@@ -65,7 +60,8 @@ public class ComputeEngineWrapper {
             httpTransport = GoogleNetHttpTransport.newTrustedTransport();
 
             // Authenticate using Google Application Default Credentials.
-            GoogleCredentials credential = GoogleCredentials.fromStream(new FileInputStream("exhale-290316-d81df81f2dfd.json"));
+            GoogleCredentials credential = GoogleCredentials
+                    .fromStream(new FileInputStream("exhale-290316-d81df81f2dfd.json"));
             if (credential.createScopedRequired()) {
                 List<String> scopes = new ArrayList<>();
                 // Set Google Cloud Storage scope to Full Control.
@@ -79,25 +75,20 @@ public class ComputeEngineWrapper {
             // Create Compute Engine object for listing instances.
             compute = new Compute.Builder(httpTransport, JSON_FACTORY, requestInitializer)
                     .setApplicationName(APPLICATION_NAME).build();
-/*
-            // List out instances, looking for the one created by this sample app.
-            boolean foundOurInstance = printInstances(compute);
-
-            Operation op;
-            if (foundOurInstance) {
-                op = deleteInstance(compute, SAMPLE_INSTANCE_NAME);
-            } else {
-                op = startInstance(compute, SAMPLE_INSTANCE_NAME);
-            }
-
-            // Call Compute Engine API operation and poll for operation completion status
-            System.out.println("Waiting for operation completion...");
-            Operation.Error error = blockUntilComplete(compute, op, OPERATION_TIMEOUT_MILLIS);
-            if (error == null) {
-                System.out.println("Success!");
-            } else {
-                System.out.println(error.toPrettyString());
-            }*/
+            /*
+             * // List out instances, looking for the one created by this sample app.
+             * boolean foundOurInstance = printInstances(compute);
+             *
+             * Operation op; if (foundOurInstance) { op = deleteInstance(compute,
+             * SAMPLE_INSTANCE_NAME); } else { op = startInstance(compute,
+             * SAMPLE_INSTANCE_NAME); }
+             *
+             * // Call Compute Engine API operation and poll for operation completion status
+             * System.out.println("Waiting for operation completion..."); Operation.Error
+             * error = blockUntilComplete(compute, op, OPERATION_TIMEOUT_MILLIS); if (error
+             * == null) { System.out.println("Success!"); } else {
+             * System.out.println(error.toPrettyString()); }
+             */
         } catch (IOException e) {
             logger.warning(e.getMessage());
         } catch (Exception t) {
