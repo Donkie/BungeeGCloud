@@ -99,6 +99,20 @@ public class ComputeEngineWrapper {
     }
 
     /**
+     * Stops the instance
+     *
+     * @param zoneName
+     * @param instanceName
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public void stopInstance(String zoneName, String instanceName) throws IOException, InterruptedException {
+        Compute.Instances.Stop stopper = compute.instances().stop(projectId, zoneName, instanceName);
+        Operation op = stopper.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
      * Wait until {@code operation} is completed.
      *
      * @param compute   the {@code Compute} object
