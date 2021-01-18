@@ -45,12 +45,20 @@ public class Events implements Listener {
     @EventHandler
     public void onServerConnect(ServerConnectEvent event) {
         Logger logger = this.plugin.getLogger();
-        logger.info("BungeeGCloud onServerConnect " + event.getTarget().getSocketAddress() + " : "
-                + event.getTarget().getName());
 
         if (!event.getTarget().getName().equals("lobby")) {
             return;
         }
+
+        if (plugin.isServerRunning()) {
+            try {
+                event.setTarget(plugin.getServerInfo());
+                return;
+            } catch (NotOnlineException e) {
+            }
+        }
+
+        logger.info("Server not running. Expected IllegalStateException incoming!");
 
         // Cancel the connect request, but don't disconnect the user.
         // This puts the user in an invalid state and throws an exception, which maybe
@@ -59,16 +67,16 @@ public class Events implements Listener {
         event.setCancelled(true);
 
         // Keep sending keep alive packets so the user doesn't time out
-        ScheduledTask keepAliveTask = this.plugin.getProxy().getScheduler().schedule(this.plugin,
-                () -> event.getPlayer().unsafe().sendPacket(new KeepAlive(random.nextLong())), 1, 5, TimeUnit.SECONDS);
+        ScheduledTask keepAliveTask = keepAlive(event.getPlayer());
 
+        // Start the server asynchronously
         plugin.startServer((servinfo, error) -> {
             keepAliveTask.cancel();
 
             boolean playerSent = false;
             if (error == null && servinfo != null) {
                 if (event.getPlayer().isConnected()) {
-                    logger.info("Sending player");
+                    logger.info(String.format("Sending %s to the server.", event.getPlayer().getName()));
                     event.getPlayer().connect(servinfo);
                 }
                 playerSent = true;
@@ -80,5 +88,18 @@ public class Events implements Listener {
                 event.getPlayer().disconnect(TextComponent.fromLegacyText("Failed to start server"));
             }
         });
+    }
+
+    /**
+     * Starts a task that periodically sends keep-alive packets to the player to
+     * prevent them from timing out.
+     *
+     * @param player The player to keep alive
+     * @return The task created. Cancel this when you don't wish to send keep-alive
+     *         packets anymore.
+     */
+    private ScheduledTask keepAlive(ProxiedPlayer player) {
+        return this.plugin.getProxy().getScheduler().schedule(this.plugin,
+                () -> player.unsafe().sendPacket(new KeepAlive(random.nextLong())), 1, 5, TimeUnit.SECONDS);
     }
 }

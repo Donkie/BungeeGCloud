@@ -29,13 +29,13 @@ public class BungeeGCloud extends Plugin {
         private void updateServerStatus(ServerStatus status) throws NotOnlineException {
             IPPort ipport;
             try {
-                Instance instance = getInstance();
-                if (!isInstanceRunning(instance)) {
+                updateInstanceRunningStatus();
+                if (!isInstanceRunning()) {
                     status.setOffline();
                     throw new NotOnlineException();
                 }
 
-                ipport = new IPPort(getInstanceIP(instance), getServerPort());
+                ipport = new IPPort(getInstanceIP(), getServerPort());
             } catch (IOException e) {
                 status.setOffline();
                 getLogger().warning(e.toString());
@@ -46,7 +46,7 @@ public class BungeeGCloud extends Plugin {
         }
 
         public void run() {
-            if (serverStarting){
+            if (serverStarting) {
                 return;
             }
 
@@ -58,8 +58,8 @@ public class BungeeGCloud extends Plugin {
 
             int onlinePlayers = serverStatus.getOnlinePlayers();
             if (onlinePlayers == 0 && stopServerTask == null) {
-                getLogger().info(
-                        String.format("No players online. Stopping server in %d seconds...", STOP_SERVER_DELAY));
+                getLogger()
+                        .info(String.format("No players online. Stopping server in %d seconds...", STOP_SERVER_DELAY));
                 startStopTask();
             } else if (onlinePlayers > 0 && stopServerTask != null) {
                 getLogger().info("Players now online, aborting stop.");
@@ -91,6 +91,9 @@ public class BungeeGCloud extends Plugin {
 
     private boolean serverStarting = false;
 
+    private boolean instanceRunning = false;
+    private String instanceIP = null;
+
     @Override
     public void onEnable() {
         try {
@@ -108,11 +111,36 @@ public class BungeeGCloud extends Plugin {
         return compute.getInstance(ZONE_NAME, INSTANCE_NAME);
     }
 
-    public boolean isInstanceRunning() throws IOException {
-        return isInstanceRunning(getInstance());
+    public void updateInstanceRunningStatus() throws IOException {
+        instanceRunning = BungeeGCloud.isInstanceRunning(getInstance());
+        if (!instanceRunning) {
+            instanceIP = null;
+        }
     }
 
-    public boolean isInstanceRunning(Instance instance) {
+    public boolean isInstanceRunning() {
+        return instanceRunning;
+    }
+
+    public boolean isServerRunning() {
+        try {
+            MCQuery query = new MCQuery(getInstanceIP(), SERVER_PORT);
+            query.basicStat();
+            return true;
+        } catch (NotOnlineException | IOException e) {
+            return false;
+        }
+    }
+
+    public ServerInfo getServerInfo() throws NotOnlineException {
+        return getServerInfo(new IPPort(getInstanceIP(), SERVER_PORT));
+    }
+
+    public ServerInfo getServerInfo(IPPort ipport) {
+        return getProxy().constructServerInfo("main", ipport.toAddress(), "Test", false);
+    }
+
+    public static boolean isInstanceRunning(Instance instance) {
         String status = instance.getStatus();
         return !(status.equals("STOPPING") || status.equals("SUSPENDING") || status.equals("SUSPENDED")
                 || status.equals("TERMINATED"));
@@ -120,9 +148,13 @@ public class BungeeGCloud extends Plugin {
 
     public void startInstance() throws IOException, InterruptedException {
         compute.startInstance(ZONE_NAME, INSTANCE_NAME);
+        instanceIP = ComputeEngineWrapper.getInstanceExternalIP(getInstance());
+        instanceRunning = true;
     }
 
     public void stopInstance() throws IOException, InterruptedException {
+        instanceRunning = false;
+        instanceIP = null;
         compute.stopInstance(ZONE_NAME, INSTANCE_NAME);
     }
 
@@ -134,19 +166,18 @@ public class BungeeGCloud extends Plugin {
             serverStarting = false;
             ServerInfo serverinfo = null;
             if (ipport != null) {
-                serverinfo = getProxy().constructServerInfo("main", ipport.toAddress(), "Test", false);
+                serverinfo = getServerInfo(ipport);
             }
             callback.done(serverinfo, error);
         });
         getProxy().getScheduler().runAsync(this, runner);
     }
 
-    public String getInstanceIP() throws IOException {
-        return getInstanceIP(getInstance());
-    }
-
-    public String getInstanceIP(Instance instance) throws IOException {
-        return ComputeEngineWrapper.getInstanceExternalIP(instance);
+    public String getInstanceIP() throws NotOnlineException {
+        if (instanceIP == null || !isInstanceRunning()) {
+            throw new NotOnlineException();
+        }
+        return instanceIP;
     }
 
     public int getServerPort() {
