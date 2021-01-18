@@ -24,12 +24,6 @@ public class Events implements Listener {
     }
 
     @EventHandler
-    public void onPostLogin(PostLoginEvent event) {
-        ProxiedPlayer player = event.getPlayer();
-        this.plugin.getLogger().info("BungeeGClud onPostLogin " + player.getName());
-    }
-
-    @EventHandler
     public void onPing(ProxyPingEvent event) {
         ServerStatus status = plugin.getServerStatus();
         ServerPing ping = event.getResponse();
