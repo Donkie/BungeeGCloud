@@ -65,14 +65,14 @@ public class Events implements Listener {
         plugin.startServer((servinfo, error) -> {
             keepAliveTask.cancel();
 
-            // TODO: Add check to make sure player is still online
-
             boolean playerSent = false;
-            if (servinfo != null) {
-                logger.info("Sending player");
-                event.getPlayer().connect(servinfo);
+            if (error == null && servinfo != null) {
+                if (event.getPlayer().isConnected()) {
+                    logger.info("Sending player");
+                    event.getPlayer().connect(servinfo);
+                }
                 playerSent = true;
-            } else if (error != null) {
+            } else {
                 logger.warning(String.format("Failed to start the instance: %s", error.toString()));
             }
 
