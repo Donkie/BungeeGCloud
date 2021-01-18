@@ -4,10 +4,12 @@ import java.util.Random;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
+import net.md_5.bungee.api.ServerPing;
 import net.md_5.bungee.api.chat.TextComponent;
 import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.event.PostLoginEvent;
+import net.md_5.bungee.api.event.ProxyPingEvent;
 import net.md_5.bungee.api.event.ServerConnectEvent;
 import net.md_5.bungee.api.plugin.Listener;
 import net.md_5.bungee.api.scheduler.ScheduledTask;
@@ -26,6 +28,20 @@ public class Events implements Listener {
     public void onPostLogin(PostLoginEvent event) {
         ProxiedPlayer player = event.getPlayer();
         this.plugin.getLogger().info("BungeeGClud onPostLogin " + player.getName());
+    }
+
+    @EventHandler
+    public void onPing(ProxyPingEvent event) {
+        ServerStatus status = plugin.getServerStatus();
+        ServerPing ping = event.getResponse();
+        ping.setPlayers(status.getPlayersForPing());
+        if (status.isOnline()) {
+            ping.setDescriptionComponent(new TextComponent(TextComponent.fromLegacyText(status.getMOTD())));
+        } else {
+            ping.setDescriptionComponent(
+                    new TextComponent(TextComponent.fromLegacyText("(P) " + status.getMOTD())));
+        }
+        event.setResponse(ping);
     }
 
     @EventHandler

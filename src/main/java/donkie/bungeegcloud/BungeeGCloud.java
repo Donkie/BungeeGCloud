@@ -13,41 +13,46 @@ import query.QueryResponse;
 
 public class BungeeGCloud extends Plugin {
     private final class ServerQueryRunnable implements Runnable {
-        private int getOnlinePlayers(IPPort ipport) throws IOException {
+        private void updateServerStatus(IPPort ipport, ServerStatus status) {
             MCQuery query = new MCQuery(ipport.getIp(), ipport.getPort());
-            QueryResponse resp = query.basicStat();
-            return resp.getOnlinePlayers();
+            QueryResponse resp;
+            try {
+                resp = query.basicStat();
+                status.update(resp);
+            } catch (IOException e) {
+                status.setOffline();
+            }
         }
 
-        private int getOnlinePlayers() throws NotOnlineException {
+        private void updateServerStatus(ServerStatus status) throws NotOnlineException {
             IPPort ipport;
             try {
                 Instance instance = getInstance();
                 if (!isInstanceRunning(instance)) {
+                    status.setOffline();
                     throw new NotOnlineException();
                 }
 
                 ipport = new IPPort(getInstanceIP(instance), getServerPort());
             } catch (IOException e) {
+                status.setOffline();
                 getLogger().warning(e.toString());
                 throw new NotOnlineException();
             }
 
-            try {
-                return getOnlinePlayers(ipport);
-            } catch (IOException e) {
-                throw new NotOnlineException();
-            }
+            updateServerStatus(ipport, status);
         }
 
         public void run() {
             try {
-                int onlinePlayers = getOnlinePlayers();
+                updateServerStatus(serverStatus);
+
+                int onlinePlayers = serverStatus.getOnlinePlayers();
                 if (onlinePlayers == 0 && stopServerTask == null) {
                     getLogger().info(
                             String.format("No players online. Stopping server in %d seconds...", STOP_SERVER_DELAY));
                     startStopTask();
-                } else if(onlinePlayers > 0 && stopServerTask != null) {
+                } else if (onlinePlayers > 0 && stopServerTask != null) {
                     getLogger().info("Players now online, aborting stop.");
                     cancelStopTask();
                 }
@@ -75,12 +80,15 @@ public class BungeeGCloud extends Plugin {
 
     private ScheduledTask stopServerTask = null;
 
+    private ServerStatus serverStatus = new ServerStatus(20, "Welcome to Exhale!");
+
     @Override
     public void onEnable() {
         try {
             compute = new ComputeEngineWrapper(PROJECT_ID);
 
-            getProxy().getScheduler().schedule(this, new ServerQueryRunnable(), 1, SERVER_PLAYERS_CHECK_PERIOD, TimeUnit.SECONDS);
+            getProxy().getScheduler().schedule(this, new ServerQueryRunnable(), 1, SERVER_PLAYERS_CHECK_PERIOD,
+                    TimeUnit.SECONDS);
             getProxy().getPluginManager().registerListener(this, new Events(this));
         } catch (GeneralSecurityException | IOException e) {
             getLogger().warning(e.toString());
@@ -142,5 +150,9 @@ public class BungeeGCloud extends Plugin {
             stopServerTask.cancel();
             stopServerTask = null;
         }
+    }
+
+    public ServerStatus getServerStatus() {
+        return serverStatus;
     }
 }
