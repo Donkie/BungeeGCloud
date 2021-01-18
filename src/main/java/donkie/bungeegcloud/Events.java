@@ -6,7 +6,6 @@ import java.util.logging.Logger;
 
 import net.md_5.bungee.api.ServerPing;
 import net.md_5.bungee.api.chat.TextComponent;
-import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.connection.ProxiedPlayer;
 import net.md_5.bungee.api.event.PostLoginEvent;
 import net.md_5.bungee.api.event.ProxyPingEvent;
@@ -38,8 +37,7 @@ public class Events implements Listener {
         if (status.isOnline()) {
             ping.setDescriptionComponent(new TextComponent(TextComponent.fromLegacyText(status.getMOTD())));
         } else {
-            ping.setDescriptionComponent(
-                    new TextComponent(TextComponent.fromLegacyText("(P) " + status.getMOTD())));
+            ping.setDescriptionComponent(new TextComponent(TextComponent.fromLegacyText("(P) " + status.getMOTD())));
         }
         event.setResponse(ping);
     }
@@ -64,18 +62,17 @@ public class Events implements Listener {
         ScheduledTask keepAliveTask = this.plugin.getProxy().getScheduler().schedule(this.plugin,
                 () -> event.getPlayer().unsafe().sendPacket(new KeepAlive(random.nextLong())), 1, 5, TimeUnit.SECONDS);
 
-        StartInstanceRunnable runner = new StartInstanceRunnable(plugin, (ipport, error) -> {
+        plugin.startServer((servinfo, error) -> {
             keepAliveTask.cancel();
 
             // TODO: Add check to make sure player is still online
 
             boolean playerSent = false;
-            if (error == null) {
+            if (servinfo != null) {
                 logger.info("Sending player");
-                ServerInfo servinfo = plugin.getProxy().constructServerInfo("main", ipport.toAddress(), "Test", false);
                 event.getPlayer().connect(servinfo);
                 playerSent = true;
-            } else {
+            } else if (error != null) {
                 logger.warning(String.format("Failed to start the instance: %s", error.toString()));
             }
 
@@ -83,6 +80,5 @@ public class Events implements Listener {
                 event.getPlayer().disconnect(TextComponent.fromLegacyText("Failed to start server"));
             }
         });
-        this.plugin.getProxy().getScheduler().runAsync(this.plugin, runner);
     }
 }

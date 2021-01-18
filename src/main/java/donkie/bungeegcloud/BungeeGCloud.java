@@ -6,6 +6,8 @@ import java.util.concurrent.TimeUnit;
 
 import com.google.api.services.compute.model.Instance;
 
+import net.md_5.bungee.api.Callback;
+import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.api.scheduler.ScheduledTask;
 import query.MCQuery;
@@ -44,19 +46,24 @@ public class BungeeGCloud extends Plugin {
         }
 
         public void run() {
+            if (serverStarting){
+                return;
+            }
+
             try {
                 updateServerStatus(serverStatus);
-
-                int onlinePlayers = serverStatus.getOnlinePlayers();
-                if (onlinePlayers == 0 && stopServerTask == null) {
-                    getLogger().info(
-                            String.format("No players online. Stopping server in %d seconds...", STOP_SERVER_DELAY));
-                    startStopTask();
-                } else if (onlinePlayers > 0 && stopServerTask != null) {
-                    getLogger().info("Players now online, aborting stop.");
-                    cancelStopTask();
-                }
             } catch (NotOnlineException e) {
+                return;
+            }
+
+            int onlinePlayers = serverStatus.getOnlinePlayers();
+            if (onlinePlayers == 0 && stopServerTask == null) {
+                getLogger().info(
+                        String.format("No players online. Stopping server in %d seconds...", STOP_SERVER_DELAY));
+                startStopTask();
+            } else if (onlinePlayers > 0 && stopServerTask != null) {
+                getLogger().info("Players now online, aborting stop.");
+                cancelStopTask();
             }
         }
     }
@@ -81,6 +88,8 @@ public class BungeeGCloud extends Plugin {
     private ScheduledTask stopServerTask = null;
 
     private ServerStatus serverStatus = new ServerStatus(20, "Welcome to Exhale!");
+
+    private boolean serverStarting = false;
 
     @Override
     public void onEnable() {
@@ -117,6 +126,21 @@ public class BungeeGCloud extends Plugin {
         compute.stopInstance(ZONE_NAME, INSTANCE_NAME);
     }
 
+    public void startServer(Callback<ServerInfo> callback) {
+        serverStarting = true;
+        cancelStopTask();
+
+        StartInstanceRunnable runner = new StartInstanceRunnable(this, (ipport, error) -> {
+            serverStarting = false;
+            ServerInfo serverinfo = null;
+            if (ipport != null) {
+                serverinfo = getProxy().constructServerInfo("main", ipport.toAddress(), "Test", false);
+            }
+            callback.done(serverinfo, error);
+        });
+        getProxy().getScheduler().runAsync(this, runner);
+    }
+
     public String getInstanceIP() throws IOException {
         return getInstanceIP(getInstance());
     }
@@ -132,6 +156,10 @@ public class BungeeGCloud extends Plugin {
     public void startStopTask() {
         if (stopServerTask != null) {
             stopServerTask.cancel();
+        }
+
+        if (serverStarting) {
+            return;
         }
 
         stopServerTask = getProxy().getScheduler().schedule(BungeeGCloud.this, () -> {
