@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
 import com.google.api.client.http.HttpRequestInitializer;
@@ -14,10 +15,15 @@ import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.compute.Compute;
 import com.google.api.services.compute.ComputeScopes;
+import com.google.api.services.compute.Compute.Instances.AggregatedList;
 import com.google.api.services.compute.model.AccessConfig;
 import com.google.api.services.compute.model.Instance;
+import com.google.api.services.compute.model.InstanceAggregatedList;
+import com.google.api.services.compute.model.InstanceMoveRequest;
+import com.google.api.services.compute.model.InstancesScopedList;
 import com.google.api.services.compute.model.NetworkInterface;
 import com.google.api.services.compute.model.Operation;
+import com.google.api.services.compute.model.Operation.Error;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 
@@ -51,8 +57,7 @@ public class ComputeEngineWrapper {
         httpTransport = GoogleNetHttpTransport.newTrustedTransport();
 
         // Authenticate using Google Application Default Credentials.
-        GoogleCredentials credential = GoogleCredentials
-                .fromStream(new FileInputStream(GCLOUD_CREDENTIALS));
+        GoogleCredentials credential = GoogleCredentials.fromStream(new FileInputStream(GCLOUD_CREDENTIALS));
         if (credential.createScopedRequired()) {
             List<String> scopes = new ArrayList<>();
             // Set Google Cloud Storage scope to Full Control.
@@ -73,15 +78,21 @@ public class ComputeEngineWrapper {
         return getter.execute();
     }
 
-    public static String getInstanceExternalIP(Instance instance) throws IOException {
-        for (NetworkInterface nif : instance.getNetworkInterfaces()) {
-            for (AccessConfig conf : nif.getAccessConfigs()) {
-                if (conf.getType().equals("ONE_TO_ONE_NAT") && conf.getName().equals("External NAT")) {
-                    return conf.getNatIP();
+    public String getInstanceZone(String instanceName) throws IOException {
+        AggregatedList lister = compute.instances().aggregatedList(projectId);
+        InstanceAggregatedList list = lister.execute();
+        for (Map.Entry<String, InstancesScopedList> entry : list.getItems().entrySet()) {
+            List<Instance> instances = entry.getValue().getInstances();
+            if (instances != null) {
+                for (Instance instance : instances) {
+                    if (instance.getName().equals(instanceName)) {
+                        return entry.getKey().substring(6);
+                    }
                 }
             }
         }
-        throw new FileNotFoundException("No external IP found for this instance");
+        throw new FileNotFoundException(
+                String.format("Couldn't find any instance named \"%s\" in the project!", instanceName));
     }
 
     /**
@@ -91,11 +102,22 @@ public class ComputeEngineWrapper {
      * @param instanceName
      * @throws IOException
      * @throws InterruptedException
+     * @throws ComputeException
      */
-    public void startInstance(String zoneName, String instanceName) throws IOException, InterruptedException {
+    public void startInstance(String zoneName, String instanceName)
+            throws IOException, InterruptedException, ComputeException, ZoneResourcePoolExhaustedException {
         Compute.Instances.Start starter = compute.instances().start(projectId, zoneName, instanceName);
         Operation op = starter.execute();
-        blockUntilComplete(op, 5 * 60 * 1000L);
+
+        try {
+            blockUntilComplete(op, 5 * 60 * 1000L);
+        } catch (ComputeException e) {
+            if (e.getCode().equals("ZONE_RESOURCE_POOL_EXHAUSTED")) {
+                throw new ZoneResourcePoolExhaustedException(e.getMessage());
+            } else {
+                throw e;
+            }
+        }
     }
 
     /**
@@ -105,8 +127,10 @@ public class ComputeEngineWrapper {
      * @param instanceName
      * @throws IOException
      * @throws InterruptedException
+     * @throws ComputeException
      */
-    public void stopInstance(String zoneName, String instanceName) throws IOException, InterruptedException {
+    public void stopInstance(String zoneName, String instanceName)
+            throws IOException, InterruptedException, ComputeException {
         Compute.Instances.Stop stopper = compute.instances().stop(projectId, zoneName, instanceName);
         Operation op = stopper.execute();
         blockUntilComplete(op, 5 * 60 * 1000L);
@@ -122,9 +146,10 @@ public class ComputeEngineWrapper {
      * @throws InterruptedException if we timed out waiting for the operation to
      *                              complete
      * @throws IOException          if we had trouble connecting
+     * @throws ComputeException
      */
-    public Operation.Error blockUntilComplete(Operation operation, long timeout)
-            throws InterruptedException, IOException {
+    public void blockUntilComplete(Operation operation, long timeout)
+            throws InterruptedException, IOException, ComputeException {
         long start = System.currentTimeMillis();
         final long pollInterval = 5 * 1000L;
         String zone = operation.getZone(); // null for global/regional operations
@@ -151,6 +176,18 @@ public class ComputeEngineWrapper {
                 status = operation.getStatus();
             }
         }
-        return operation == null ? null : operation.getError();
+        if (operation != null && operation.getError() != null) {
+            throwOperationException(operation.getError());
+        }
+    }
+
+    private void throwOperationException(Error err) throws ComputeException {
+        if (err.getErrors().size() == 0) {
+            throw new ComputeException();
+        }
+
+        Error.Errors error = err.getErrors().get(0);
+        throw new ComputeException(String.format("[%s] %s", error.getCode(), error.getMessage()), error.getCode(),
+                error.getMessage());
     }
 }

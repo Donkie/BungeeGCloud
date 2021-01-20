@@ -24,16 +24,16 @@ public class StartInstanceRunnable implements Runnable {
         try {
             Logger logger = plugin.getLogger();
 
-            plugin.updateInstanceRunningStatus();
-            if (!plugin.isInstanceRunning()) {
+            plugin.getInstance().updateRunningStatus();
+            if (!plugin.getInstance().isRunning()) {
                 logger.info("Starting instance");
-                plugin.startInstance();
+                plugin.getInstance().start();
                 logger.info("Instance started");
             } else {
                 logger.info("Instance is running");
             }
 
-            ipport = new IPPort(plugin.getInstanceIP(), plugin.getServerPort());
+            ipport = new IPPort(plugin.getInstance().getIp(), plugin.getServerPort());
 
             logger.info("Waiting for Minecraft start");
             StartInstanceRunnable.blockUntilServerUp(ipport, SERVER_STARTUP_TIMEOUT);

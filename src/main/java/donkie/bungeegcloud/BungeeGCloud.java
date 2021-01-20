@@ -3,8 +3,7 @@ package donkie.bungeegcloud;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.TimeUnit;
-
-import com.google.api.services.compute.model.Instance;
+import java.util.logging.Level;
 
 import net.md_5.bungee.api.Callback;
 import net.md_5.bungee.api.config.ServerInfo;
@@ -29,16 +28,16 @@ public class BungeeGCloud extends Plugin {
         private void updateServerStatus(ServerStatus status) throws NotOnlineException {
             IPPort ipport;
             try {
-                updateInstanceRunningStatus();
-                if (!isInstanceRunning()) {
+                instance.updateRunningStatus();
+                if (!instance.isRunning()) {
                     status.setOffline();
                     throw new NotOnlineException();
                 }
 
-                ipport = new IPPort(getInstanceIP(), getServerPort());
+                ipport = new IPPort(instance.getIp(), getServerPort());
             } catch (IOException e) {
                 status.setOffline();
-                getLogger().warning(e.toString());
+                getLogger().log(Level.SEVERE, "Failed to update the instance status", e);
                 throw new NotOnlineException();
             }
 
@@ -71,7 +70,6 @@ public class BungeeGCloud extends Plugin {
     private ComputeEngineWrapper compute;
 
     private static final String PROJECT_ID = "exhale-290316";
-    private static final String ZONE_NAME = "europe-west2-c";
     private static final String INSTANCE_NAME = "minecraft-1";
     private static final int SERVER_PORT = 25565;
 
@@ -91,40 +89,27 @@ public class BungeeGCloud extends Plugin {
 
     private boolean serverStarting = false;
 
-    private boolean instanceRunning = false;
-    private String instanceIP = null;
+    private InstanceWrapper instance;
 
     @Override
     public void onEnable() {
         try {
             compute = new ComputeEngineWrapper(PROJECT_ID);
 
+            instance = new InstanceWrapper(INSTANCE_NAME, compute, getLogger());
+            instance.fetchZone();
+
             getProxy().getScheduler().schedule(this, new ServerQueryRunnable(), 1, SERVER_PLAYERS_CHECK_PERIOD,
                     TimeUnit.SECONDS);
             getProxy().getPluginManager().registerListener(this, new Events(this));
         } catch (GeneralSecurityException | IOException e) {
-            getLogger().warning(e.toString());
+            getLogger().log(Level.SEVERE, "Failed to setup compute engine", e);
         }
-    }
-
-    public Instance getInstance() throws IOException {
-        return compute.getInstance(ZONE_NAME, INSTANCE_NAME);
-    }
-
-    public void updateInstanceRunningStatus() throws IOException {
-        instanceRunning = BungeeGCloud.isInstanceRunning(getInstance());
-        if (!instanceRunning) {
-            instanceIP = null;
-        }
-    }
-
-    public boolean isInstanceRunning() {
-        return instanceRunning;
     }
 
     public boolean isServerRunning() {
         try {
-            MCQuery query = new MCQuery(getInstanceIP(), SERVER_PORT);
+            MCQuery query = new MCQuery(instance.getIp(), SERVER_PORT);
             query.basicStat();
             return true;
         } catch (NotOnlineException | IOException e) {
@@ -132,30 +117,16 @@ public class BungeeGCloud extends Plugin {
         }
     }
 
+    public InstanceWrapper getInstance() {
+        return instance;
+    }
+
     public ServerInfo getServerInfo() throws NotOnlineException {
-        return getServerInfo(new IPPort(getInstanceIP(), SERVER_PORT));
+        return getServerInfo(new IPPort(instance.getIp(), SERVER_PORT));
     }
 
     public ServerInfo getServerInfo(IPPort ipport) {
         return getProxy().constructServerInfo("main", ipport.toAddress(), "Test", false);
-    }
-
-    public static boolean isInstanceRunning(Instance instance) {
-        String status = instance.getStatus();
-        return !(status.equals("STOPPING") || status.equals("SUSPENDING") || status.equals("SUSPENDED")
-                || status.equals("TERMINATED"));
-    }
-
-    public void startInstance() throws IOException, InterruptedException {
-        compute.startInstance(ZONE_NAME, INSTANCE_NAME);
-        instanceIP = ComputeEngineWrapper.getInstanceExternalIP(getInstance());
-        instanceRunning = true;
-    }
-
-    public void stopInstance() throws IOException, InterruptedException {
-        instanceRunning = false;
-        instanceIP = null;
-        compute.stopInstance(ZONE_NAME, INSTANCE_NAME);
     }
 
     public void startServer(Callback<ServerInfo> callback) {
@@ -171,13 +142,6 @@ public class BungeeGCloud extends Plugin {
             callback.done(serverinfo, error);
         });
         getProxy().getScheduler().runAsync(this, runner);
-    }
-
-    public String getInstanceIP() throws NotOnlineException {
-        if (instanceIP == null || !isInstanceRunning()) {
-            throw new NotOnlineException();
-        }
-        return instanceIP;
     }
 
     public int getServerPort() {
@@ -196,10 +160,10 @@ public class BungeeGCloud extends Plugin {
         stopServerTask = getProxy().getScheduler().schedule(BungeeGCloud.this, () -> {
             getLogger().info("Stopping instance due to inactivity...");
             try {
-                stopInstance();
+                instance.stop();
                 getLogger().info("Instance stopped");
-            } catch (IOException | InterruptedException e) {
-                getLogger().warning(e.toString());
+            } catch (IOException | InterruptedException | ComputeException e) {
+                getLogger().log(Level.SEVERE, "Failed to stop the instance", e);
             }
         }, STOP_SERVER_DELAY, TimeUnit.SECONDS);
     }

@@ -2,6 +2,7 @@ package donkie.bungeegcloud;
 
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import net.md_5.bungee.api.ServerPing;
@@ -75,7 +76,7 @@ public class Events implements Listener {
                 }
                 playerSent = true;
             } else {
-                logger.warning(String.format("Failed to start the instance: %s", error.toString()));
+                logger.log(Level.SEVERE, "Failed to start the instance", error);
             }
 
             if (!playerSent) {
