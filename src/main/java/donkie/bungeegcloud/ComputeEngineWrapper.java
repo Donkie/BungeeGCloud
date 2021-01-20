@@ -120,6 +120,19 @@ public class ComputeEngineWrapper {
         }
     }
 
+    public void moveInstance(String oldZoneName, String newZoneName, String instanceName)
+            throws IOException, InterruptedException, ComputeException {
+        InstanceMoveRequest req = new InstanceMoveRequest();
+        req.setDestinationZone(
+                String.format("https://www.googleapis.com/compute/v1/projects/%s/zones/%s", projectId, newZoneName));
+        req.setTargetInstance(String.format("https://www.googleapis.com/compute/v1/projects/%s/zones/%s/instances/%s",
+                projectId, oldZoneName, instanceName));
+
+        Compute.Projects.MoveInstance mover = compute.projects().moveInstance(projectId, req);
+        Operation op = mover.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
     /**
      * Stops the instance
      *

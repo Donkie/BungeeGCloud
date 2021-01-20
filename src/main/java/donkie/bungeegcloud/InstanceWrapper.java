@@ -65,8 +65,42 @@ public class InstanceWrapper {
         return ip;
     }
 
+    private void startMovedZones()
+            throws IOException, InterruptedException, ComputeException, ZoneResourcePoolExhaustedException {
+        Set<String> zonesToTestSet = new HashSet<String>(ZONES);
+        zonesToTestSet.remove(zone);
+
+        List<String> zonesToTest = new ArrayList<String>(zonesToTestSet);
+
+        boolean success = false;
+        for (String newZone : zonesToTest) {
+            logger.info(String.format("Moving instance to zone %s...", newZone));
+            move(newZone);
+            zone = newZone;
+            try {
+                compute.startInstance(newZone, name);
+            } catch (ZoneResourcePoolExhaustedException e) {
+                logger.info(String.format("New zone %s is also exhausted.", newZone));
+                continue;
+            }
+            logger.info(String.format("Zone %s is available!", newZone));
+            success = true;
+            break;
+        }
+
+        if (!success) {
+            throw new ZoneResourcePoolExhaustedException("No zone with available resources found in the region :(");
+        }
+    }
+
     public void start() throws IOException, InterruptedException, ComputeException, ZoneResourcePoolExhaustedException {
-        compute.startInstance(zone, name);
+        try {
+            compute.startInstance(zone, name);
+        } catch (ZoneResourcePoolExhaustedException e) {
+            logger.warning(
+                    String.format("Compute Engine resources exhausted in zone %s, starting relocation...", zone));
+            startMovedZones();
+        }
         ip = getInstanceExternalIP(fetchInstance());
         running = true;
     }
@@ -75,6 +109,10 @@ public class InstanceWrapper {
         running = false;
         ip = null;
         compute.stopInstance(zone, name);
+    }
+
+    public void move(String newZoneName) throws IOException, InterruptedException, ComputeException {
+        compute.moveInstance(zone, newZoneName, name);
     }
 
     public static boolean isRunningStatus(String status) {
