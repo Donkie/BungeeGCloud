@@ -17,9 +17,11 @@ import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.compute.Compute;
 import com.google.api.services.compute.Compute.Instances.AggregatedList;
 import com.google.api.services.compute.ComputeScopes;
+import com.google.api.services.compute.model.AccessConfig;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.InstanceAggregatedList;
 import com.google.api.services.compute.model.InstancesScopedList;
+import com.google.api.services.compute.model.NetworkInterface;
 import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.Operation.Error;
 import com.google.auth.http.HttpCredentialsAdapter;
@@ -208,4 +210,41 @@ public class ComputeEngineWrapper {
         throw new ServiceException(String.format("[%s] %s", error.getCode(), error.getMessage()), error.getCode(),
                 error.getMessage());
     }
+
+    /**
+     * Returns whether the Instance is running or not
+     * @param instance The instance
+     * @return Is running
+     */
+    public static boolean isRunning(Instance instance) {
+        return isRunningStatus(instance.getStatus());
+    }
+
+	/**
+	 * Returns whether the supplied Cloud Compute String instance status indicates a running or not running status
+	 * @param status The String status, such as "STOPPING"
+	 * @return If it is a status indicating running or not
+	 */
+	private static boolean isRunningStatus(String status) {
+	    return !(status.equals("STOPPING") || status.equals("SUSPENDING") || status.equals("SUSPENDED")
+	            || status.equals("TERMINATED"));
+	}
+
+	/**
+	 * Gets the external IP of the Instance object
+	 * @param instance The Instance object
+	 * @return The external IP
+	 * @throws IOException
+	 * @throws FileNotFoundException Thrown if no external IP was found for the Instance
+	 */
+	public static String getExternalIP(Instance instance) throws IOException {
+	    for (NetworkInterface nif : instance.getNetworkInterfaces()) {
+	        for (AccessConfig conf : nif.getAccessConfigs()) {
+	            if (conf.getType().equals("ONE_TO_ONE_NAT") && conf.getName().equals("External NAT")) {
+	                return conf.getNatIP();
+	            }
+	        }
+	    }
+	    throw new FileNotFoundException("No external IP found for this instance");
+	}
 }

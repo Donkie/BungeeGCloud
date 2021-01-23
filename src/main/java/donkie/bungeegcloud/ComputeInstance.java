@@ -1,13 +1,10 @@
 package donkie.bungeegcloud;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 
-import com.google.api.services.compute.model.AccessConfig;
 import com.google.api.services.compute.model.Instance;
-import com.google.api.services.compute.model.NetworkInterface;
 
 import net.md_5.bungee.config.Configuration;
 
@@ -71,10 +68,10 @@ public class ComputeInstance implements Machine {
     @Override
     public void updateRunningStatus() throws IOException {
         Instance instance = fetchInstance();
-        running = isRunningStatus(instance.getStatus());
+        running = ComputeEngineWrapper.isRunning(instance);
         if (running && ip == null) {
             // This can happen if the instance is started by something else, that means we need to fetch the ip now
-            ip = getInstanceExternalIP(instance);
+            ip = ComputeEngineWrapper.getExternalIP(instance);
         }
         else if (!running) {
             ip = null;
@@ -128,7 +125,7 @@ public class ComputeInstance implements Machine {
     @Override
     public void start() throws IOException, InterruptedException, ServiceException, MachinePoolExhaustedException {
         compute.startInstance(zone, name);
-        ip = getInstanceExternalIP(fetchInstance());
+        ip = ComputeEngineWrapper.getExternalIP(fetchInstance());
         running = true;
     }
 
@@ -143,33 +140,5 @@ public class ComputeInstance implements Machine {
         running = false;
         ip = null;
         compute.stopInstance(zone, name);
-    }
-
-    /**
-     * Returns whether the supplied Cloud Compute String instance status indicates a running or not running status
-     * @param status The String status, such as "STOPPING"
-     * @return If it is a status indicating running or not
-     */
-    private static boolean isRunningStatus(String status) {
-        return !(status.equals("STOPPING") || status.equals("SUSPENDING") || status.equals("SUSPENDED")
-                || status.equals("TERMINATED"));
-    }
-
-    /**
-     * Gets the external IP of the Instance object
-     * @param instance The Instance object
-     * @return The external IP
-     * @throws IOException
-     * @throws FileNotFoundException Thrown if no external IP was found for the Instance
-     */
-    private static String getInstanceExternalIP(Instance instance) throws IOException {
-        for (NetworkInterface nif : instance.getNetworkInterfaces()) {
-            for (AccessConfig conf : nif.getAccessConfigs()) {
-                if (conf.getType().equals("ONE_TO_ONE_NAT") && conf.getName().equals("External NAT")) {
-                    return conf.getNatIP();
-                }
-            }
-        }
-        throw new FileNotFoundException("No external IP found for this instance");
     }
 }
