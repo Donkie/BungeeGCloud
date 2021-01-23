@@ -15,14 +15,11 @@ import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.compute.Compute;
-import com.google.api.services.compute.ComputeScopes;
 import com.google.api.services.compute.Compute.Instances.AggregatedList;
-import com.google.api.services.compute.model.AccessConfig;
+import com.google.api.services.compute.ComputeScopes;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.InstanceAggregatedList;
-import com.google.api.services.compute.model.InstanceMoveRequest;
 import com.google.api.services.compute.model.InstancesScopedList;
-import com.google.api.services.compute.model.NetworkInterface;
 import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.Operation.Error;
 import com.google.auth.http.HttpCredentialsAdapter;
@@ -98,18 +95,18 @@ public class ComputeEngineWrapper {
      * @param instanceName
      * @throws IOException
      * @throws InterruptedException
-     * @throws ComputeException
+     * @throws ServiceException
      */
     public void startInstance(String zoneName, String instanceName)
-            throws IOException, InterruptedException, ComputeException, ZoneResourcePoolExhaustedException {
+            throws IOException, InterruptedException, ServiceException, MachinePoolExhaustedException {
         Compute.Instances.Start starter = compute.instances().start(projectId, zoneName, instanceName);
         Operation op = starter.execute();
 
         try {
             blockUntilComplete(op, 5 * 60 * 1000L);
-        } catch (ComputeException e) {
+        } catch (ServiceException e) {
             if (e.getCode().equals("ZONE_RESOURCE_POOL_EXHAUSTED")) {
-                throw new ZoneResourcePoolExhaustedException(e.getMessage());
+                throw MachinePoolExhaustedException.FromComputeMessage(e.getMessage());
             } else {
                 throw e;
             }
@@ -123,10 +120,10 @@ public class ComputeEngineWrapper {
      * @param instanceName
      * @throws IOException
      * @throws InterruptedException
-     * @throws ComputeException
+     * @throws ServiceException
      */
     public void stopInstance(String zoneName, String instanceName)
-            throws IOException, InterruptedException, ComputeException {
+            throws IOException, InterruptedException, ServiceException {
         Compute.Instances.Stop stopper = compute.instances().stop(projectId, zoneName, instanceName);
         Operation op = stopper.execute();
         blockUntilComplete(op, 5 * 60 * 1000L);
@@ -142,10 +139,10 @@ public class ComputeEngineWrapper {
      * @throws InterruptedException if we timed out waiting for the operation to
      *                              complete
      * @throws IOException          if we had trouble connecting
-     * @throws ComputeException
+     * @throws ServiceException
      */
     public void blockUntilComplete(Operation operation, long timeout)
-            throws InterruptedException, IOException, ComputeException {
+            throws InterruptedException, IOException, ServiceException {
         long start = System.currentTimeMillis();
         final long pollInterval = 5 * 1000L;
         String zone = operation.getZone(); // null for global/regional operations
@@ -177,13 +174,13 @@ public class ComputeEngineWrapper {
         }
     }
 
-    private void throwOperationException(Error err) throws ComputeException {
+    private void throwOperationException(Error err) throws ServiceException {
         if (err.getErrors().size() == 0) {
-            throw new ComputeException();
+            throw new ServiceException();
         }
 
         Error.Errors error = err.getErrors().get(0);
-        throw new ComputeException(String.format("[%s] %s", error.getCode(), error.getMessage()), error.getCode(),
+        throw new ServiceException(String.format("[%s] %s", error.getCode(), error.getMessage()), error.getCode(),
                 error.getMessage());
     }
 }

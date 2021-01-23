@@ -1,6 +1,6 @@
 package donkie.bungeegcloud;
 
-public class ComputeException extends Exception {
+public class ServiceException extends Exception {
 	/**
      *
      */
@@ -9,14 +9,14 @@ public class ComputeException extends Exception {
     private String code = null;
     private String message = null;
 
-    public ComputeException(String errmsg, String code, String message) {
+    public ServiceException(String errmsg, String code, String message) {
         super(errmsg);
 
         this.code = code;
         this.message = message;
 	}
 
-	public ComputeException() {
+	public ServiceException() {
         super();
     }
 

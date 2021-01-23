@@ -1,31 +1,31 @@
 package donkie.bungeegcloud;
 
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.logging.Logger;
+import java.security.GeneralSecurityException;
 
 import com.google.api.services.compute.model.AccessConfig;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.NetworkInterface;
 
-public class InstanceWrapper {
+import net.md_5.bungee.config.Configuration;
+
+public class ComputeInstance implements Machine {
     private String name;
     private String zone;
     private String ip = null;
     private boolean running = false;
 
     private ComputeEngineWrapper compute;
-    private Logger logger;
 
-    public InstanceWrapper(String name, ComputeEngineWrapper compute, Logger logger) {
-        this.name = name;
-        this.compute = compute;
-        this.logger = logger;
+    public ComputeInstance(Configuration computeConfig, File dataFolder)
+            throws IOException, GeneralSecurityException {
+        String projectId = computeConfig.getString("project_id");
+        this.name = computeConfig.getString("instance_id");
+        this.compute = new ComputeEngineWrapper(projectId, new File(dataFolder, "credentials.json"));
+
+        fetchZone();
     }
 
     public Instance fetchInstance() throws IOException {
@@ -67,13 +67,13 @@ public class InstanceWrapper {
         return ip;
     }
 
-    public void start() throws IOException, InterruptedException, ComputeException, ZoneResourcePoolExhaustedException {
+    public void start() throws IOException, InterruptedException, ServiceException, MachinePoolExhaustedException {
         compute.startInstance(zone, name);
         ip = getInstanceExternalIP(fetchInstance());
         running = true;
     }
 
-    public void stop() throws IOException, InterruptedException, ComputeException {
+    public void stop() throws IOException, InterruptedException, ServiceException {
         running = false;
         ip = null;
         compute.stopInstance(zone, name);

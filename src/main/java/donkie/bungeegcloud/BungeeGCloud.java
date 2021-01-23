@@ -32,13 +32,13 @@ public class BungeeGCloud extends Plugin {
         private void updateServerStatus(ServerStatus status) throws NotOnlineException {
             IPPort ipport;
             try {
-                instance.updateRunningStatus();
-                if (!instance.isRunning()) {
+                machine.updateRunningStatus();
+                if (!machine.isRunning()) {
                     status.setOffline();
                     throw new NotOnlineException();
                 }
 
-                ipport = new IPPort(instance.getIp(), getServerPort());
+                ipport = new IPPort(machine.getIp(), getServerPort());
             } catch (IOException e) {
                 status.setOffline();
                 getLogger().log(Level.SEVERE, "Failed to update the instance status", e);
@@ -71,8 +71,6 @@ public class BungeeGCloud extends Plugin {
         }
     }
 
-    private ComputeEngineWrapper compute;
-
     private int minecraftPort;
 
     /**
@@ -91,7 +89,7 @@ public class BungeeGCloud extends Plugin {
 
     private boolean serverStarting = false;
 
-    private InstanceWrapper instance;
+    private Machine machine;
 
     @Override
     public void onEnable() {
@@ -106,10 +104,6 @@ public class BungeeGCloud extends Plugin {
             return;
         }
 
-        Configuration computeConfig = configuration.getSection("compute");
-        String projectId = computeConfig.getString("project_id");
-        String instanceName = computeConfig.getString("instance_id");
-
         Configuration minecraftConfig = configuration.getSection("minecraft");
         minecraftPort = minecraftConfig.getInt("port");
 
@@ -121,18 +115,13 @@ public class BungeeGCloud extends Plugin {
         idleServerStopwait = configuration.getLong("idle_server_stopwait");
         refreshPlayersPeriod = configuration.getInt("refresh_players_period");
 
-        if(projectId.isEmpty() || instanceName.isEmpty() || minecraftPort == 0 || defaultMOTD.isEmpty() || defaultMaxPlayers == 0 || refreshPlayersPeriod == 0){
+        if(minecraftPort == 0 || defaultMOTD.isEmpty() || defaultMaxPlayers == 0 || refreshPlayersPeriod == 0){
             getLogger().log(Level.SEVERE, "Failed to load config, some config items are missing!");
             return;
         }
 
         try {
-            File credentialsFile = new File(getDataFolder(), "credentials.json");
-
-            compute = new ComputeEngineWrapper(projectId, credentialsFile);
-
-            instance = new InstanceWrapper(instanceName, compute, getLogger());
-            instance.fetchZone();
+            machine = new ComputeInstance(configuration.getSection("compute"), getDataFolder());
         } catch (GeneralSecurityException | IOException e) {
             getLogger().log(Level.SEVERE, "Failed to setup compute engine", e);
             return;
@@ -144,7 +133,7 @@ public class BungeeGCloud extends Plugin {
 
     public boolean isServerRunning() {
         try {
-            MCQuery query = new MCQuery(instance.getIp(), minecraftPort);
+            MCQuery query = new MCQuery(machine.getIp(), minecraftPort);
             query.basicStat();
             return true;
         } catch (NotOnlineException | IOException e) {
@@ -152,12 +141,12 @@ public class BungeeGCloud extends Plugin {
         }
     }
 
-    public InstanceWrapper getInstance() {
-        return instance;
+    public Machine getMachine() {
+        return machine;
     }
 
     public ServerInfo getServerInfo() throws NotOnlineException {
-        return getServerInfo(new IPPort(instance.getIp(), minecraftPort));
+        return getServerInfo(new IPPort(machine.getIp(), minecraftPort));
     }
 
     public ServerInfo getServerInfo(IPPort ipport) {
@@ -195,9 +184,9 @@ public class BungeeGCloud extends Plugin {
         stopServerTask = getProxy().getScheduler().schedule(BungeeGCloud.this, () -> {
             getLogger().info("Stopping instance due to inactivity...");
             try {
-                instance.stop();
+                machine.stop();
                 getLogger().info("Instance stopped");
-            } catch (IOException | InterruptedException | ComputeException e) {
+            } catch (IOException | InterruptedException | ServiceException e) {
                 getLogger().log(Level.SEVERE, "Failed to stop the instance", e);
             }
         }, idleServerStopwait, TimeUnit.SECONDS);
