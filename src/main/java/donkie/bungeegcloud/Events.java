@@ -15,9 +15,16 @@ import net.md_5.bungee.api.scheduler.ScheduledTask;
 import net.md_5.bungee.event.EventHandler;
 import net.md_5.bungee.protocol.packet.KeepAlive;
 
+/**
+ * Holds BungeeCord event listeners
+ */
 public class Events implements Listener {
-    private BungeeGCloud plugin;
-    private Random random = new Random();
+
+    /** The plugin */
+    private final BungeeGCloud plugin;
+
+    /** RNG */
+    private final Random random = new Random();
 
     public Events(BungeeGCloud p) {
         this.plugin = p;

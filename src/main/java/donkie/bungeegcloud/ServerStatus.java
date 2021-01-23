@@ -4,6 +4,9 @@ import net.md_5.bungee.api.ServerPing.PlayerInfo;
 import net.md_5.bungee.api.ServerPing.Players;
 import query.QueryResponse;
 
+/**
+ * Represents the status of a Minecraft server
+ */
 public class ServerStatus {
     private boolean isOnline;
     private int numPlayers;

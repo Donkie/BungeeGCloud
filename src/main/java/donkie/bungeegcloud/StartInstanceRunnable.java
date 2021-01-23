@@ -6,14 +6,21 @@ import java.util.logging.Logger;
 import net.md_5.bungee.api.Callback;
 import query.MCQuery;
 
+/**
+ * Task used to start a machine and Minecraft server
+ */
 public class StartInstanceRunnable implements Runnable {
-    private BungeeGCloud plugin;
-    private Callback<IPPort> callback;
+    private final Logger logger;
+    private final Machine machine;
+    private final int serverPort;
+    private final Callback<IPPort> callback;
 
     private static final long SERVER_STARTUP_TIMEOUT = 5 * 60 * 1000L;
 
-    public StartInstanceRunnable(BungeeGCloud plugin, Callback<IPPort> callback) {
-        this.plugin = plugin;
+    public StartInstanceRunnable(Machine machine, int serverPort, Logger logger, Callback<IPPort> callback) {
+        this.logger = logger;
+        this.machine = machine;
+        this.serverPort = serverPort;
         this.callback = callback;
     }
 
@@ -22,18 +29,16 @@ public class StartInstanceRunnable implements Runnable {
         Throwable error = null;
 
         try {
-            Logger logger = plugin.getLogger();
-
-            plugin.getMachine().updateRunningStatus();
-            if (!plugin.getMachine().isRunning()) {
+            machine.updateRunningStatus();
+            if (!machine.isRunning()) {
                 logger.info("Starting instance");
-                plugin.getMachine().start();
+                machine.start();
                 logger.info("Instance started");
             } else {
                 logger.info("Instance is running");
             }
 
-            ipport = new IPPort(plugin.getMachine().getIp(), plugin.getServerPort());
+            ipport = new IPPort(machine.getIp(), serverPort);
 
             logger.info("Waiting for Minecraft start");
             StartInstanceRunnable.blockUntilServerUp(ipport, SERVER_STARTUP_TIMEOUT);

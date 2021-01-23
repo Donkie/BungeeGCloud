@@ -1,9 +1,9 @@
 package donkie.bungeegcloud;
 
+/**
+ * Thrown if a machine hosting service encounters an error from an operation
+ */
 public class ServiceException extends Exception {
-	/**
-     *
-     */
     private static final long serialVersionUID = 1L;
 
     private String code = null;

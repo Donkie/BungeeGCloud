@@ -16,8 +16,19 @@ import net.md_5.bungee.config.YamlConfiguration;
 import query.MCQuery;
 import query.QueryResponse;
 
+/**
+ * Main class for the plugin
+ */
 public class BungeeGCloud extends Plugin {
+    /**
+     * Represents the permanently running task that updates the Minecraft server status, and triggers for stopping the Machine if the server is empty.
+     */
     private final class ServerQueryRunnable implements Runnable {
+        /**
+         * Updates the ServerStatus object by querying the Minecraft server at ipport
+         * @param ipport The IPPort of the Minecraft server
+         * @param status The status object to update
+         */
         private void updateServerStatus(IPPort ipport, ServerStatus status) {
             MCQuery query = new MCQuery(ipport.getIp(), ipport.getPort());
             QueryResponse resp;
@@ -29,6 +40,11 @@ public class BungeeGCloud extends Plugin {
             }
         }
 
+        /**
+         * Updates the ServerStatus object by checking the machine's status, and then the Minecraft server's status.
+         * @param status The status object to update
+         * @throws NotOnlineException Thrown if the machine is not online, or if there was an issue getting the status of the machine
+         */
         private void updateServerStatus(ServerStatus status) throws NotOnlineException {
             IPPort ipport;
             try {
@@ -41,13 +57,16 @@ public class BungeeGCloud extends Plugin {
                 ipport = new IPPort(machine.getIp(), getServerPort());
             } catch (IOException e) {
                 status.setOffline();
-                getLogger().log(Level.SEVERE, "Failed to update the instance status", e);
+                getLogger().log(Level.SEVERE, "Failed to update the machine status", e);
                 throw new NotOnlineException();
             }
 
             updateServerStatus(ipport, status);
         }
 
+        /**
+         * Runs the task
+         */
         public void run() {
             if (serverStarting) {
                 return;
@@ -71,26 +90,30 @@ public class BungeeGCloud extends Plugin {
         }
     }
 
+    /** The port of the Minecraft server */
     private int minecraftPort;
 
-    /**
-     * How often we should check for if there are any players online
-     */
+    /** How often we should check for if there are any players online */
     private int refreshPlayersPeriod;
 
-    /**
-     * How long we should wait until stopping the server after last player left
-     */
+    /** How long we should wait until stopping the server after last player left */
     private long idleServerStopwait;
 
+    /** The task used to schedule a server stop. Null indicates that we currently don't have any plans to stop the server. */
     private ScheduledTask stopServerTask = null;
 
+    /** The Minecraft server status object */
     private ServerStatus serverStatus;
 
+    /** Set to true if we have begun starting the machine and Minecraft server */
     private boolean serverStarting = false;
 
+    /** The machine running the Minecraft server */
     private Machine machine;
 
+    /**
+     * Called when the plugin is first enabled
+     */
     @Override
     public void onEnable() {
         Configuration configuration;
@@ -131,6 +154,10 @@ public class BungeeGCloud extends Plugin {
         getProxy().getPluginManager().registerListener(this, new Events(this));
     }
 
+    /**
+     * Returns whether the Minecraft server is running or not
+     * @return Minecraft server is running
+     */
     public boolean isServerRunning() {
         try {
             MCQuery query = new MCQuery(machine.getIp(), minecraftPort);
@@ -141,23 +168,41 @@ public class BungeeGCloud extends Plugin {
         }
     }
 
+    /**
+     * Returns the machine
+     * @return The machine
+     */
     public Machine getMachine() {
         return machine;
     }
 
+    /**
+     * Returns a ServerInfo object for connecting to the Minecraft server
+     * @return The server info
+     * @throws NotOnlineException Thrown if the machine is not online
+     */
     public ServerInfo getServerInfo() throws NotOnlineException {
         return getServerInfo(new IPPort(machine.getIp(), minecraftPort));
     }
 
+    /**
+     * Returns a ServerInfo object for connecting to a Minecraft server hosted on ipport
+     * @param ipport The IPPort of the Minecraft server
+     * @return The server info
+     */
     public ServerInfo getServerInfo(IPPort ipport) {
         return getProxy().constructServerInfo("main", ipport.toAddress(), "Test", false);
     }
 
+    /**
+     * Asynchronously starts the machine and Minecraft server
+     * @param callback Called once the machine and Minecraft server is running
+     */
     public void startServer(Callback<ServerInfo> callback) {
         serverStarting = true;
         cancelStopTask();
 
-        StartInstanceRunnable runner = new StartInstanceRunnable(this, (ipport, error) -> {
+        StartInstanceRunnable runner = new StartInstanceRunnable(machine, minecraftPort, getLogger(), (ipport, error) -> {
             serverStarting = false;
             ServerInfo serverinfo = null;
             if (ipport != null) {
@@ -168,10 +213,17 @@ public class BungeeGCloud extends Plugin {
         getProxy().getScheduler().runAsync(this, runner);
     }
 
+    /**
+     * Returns the port of the Minecraft server
+     * @return The port
+     */
     public int getServerPort() {
         return minecraftPort;
     }
 
+    /**
+     * Starts a delayed stopping of the machine and Minecraft server
+     */
     public void startStopTask() {
         if (stopServerTask != null) {
             stopServerTask.cancel();
@@ -192,6 +244,9 @@ public class BungeeGCloud extends Plugin {
         }, idleServerStopwait, TimeUnit.SECONDS);
     }
 
+    /**
+     * Cancels the delayed stopping of the machine and Minecraft server
+     */
     public void cancelStopTask() {
         if (stopServerTask != null) {
             stopServerTask.cancel();
@@ -199,6 +254,10 @@ public class BungeeGCloud extends Plugin {
         }
     }
 
+    /**
+     * Returns the ServerStatus object representing the status of the Minecraft server
+     * @return The status object
+     */
     public ServerStatus getServerStatus() {
         return serverStatus;
     }

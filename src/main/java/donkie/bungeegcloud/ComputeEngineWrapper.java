@@ -25,15 +25,15 @@ import com.google.api.services.compute.model.Operation.Error;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 
+/**
+ * Contains methods to easily interact with Google Compute Engine's API
+ */
 public class ComputeEngineWrapper {
 
-    /**
-     * Be sure to specify the name of your application. If the application name is
-     * {@code null} or blank, the application will log a warning. Suggested format
-     * is "MyCompany-ProductName/1.0".
-     */
+    /** Name of the application, used for the user agent in API requests */
     private static final String APPLICATION_NAME = "Donkie-BungeeGCloud/1.0";
 
+    /** The GCloud project id */
     private final String projectId;
 
     /** Global instance of the HTTP transport. */
@@ -42,8 +42,16 @@ public class ComputeEngineWrapper {
     /** Global instance of the JSON factory. */
     private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
 
+    /** Cloud Compute service interface */
     private Compute compute;
 
+    /**
+     * Initializes the API with the credentialsFile for authorization
+     * @param projectId The project id, such as "test-123456"
+     * @param credentialsFile File handle to the json file containing credentials to a Google Cloud service account
+     * @throws GeneralSecurityException
+     * @throws IOException
+     */
     public ComputeEngineWrapper(String projectId, File credentialsFile) throws GeneralSecurityException, IOException {
         this.projectId = projectId;
 
@@ -66,11 +74,25 @@ public class ComputeEngineWrapper {
                 .setApplicationName(APPLICATION_NAME).build();
     }
 
+    /**
+     * Synchronously retrieves an Instance object from zone and name using the service API
+     * @param zoneName The zone name
+     * @param instanceName The instance name
+     * @return The Instance object
+     * @throws IOException
+     */
     public Instance getInstance(String zoneName, String instanceName) throws IOException {
         Compute.Instances.Get getter = compute.instances().get(projectId, zoneName, instanceName);
         return getter.execute();
     }
 
+    /**
+     * Synchronously retrieves the zone id of the specified instance.
+     * @param instanceName The instance name
+     * @return The zone id
+     * @throws IOException
+     * @throws FileNotFoundException Thrown if the specified instance wasn't found in the project.
+     */
     public String getInstanceZone(String instanceName) throws IOException {
         AggregatedList lister = compute.instances().aggregatedList(projectId);
         InstanceAggregatedList list = lister.execute();
@@ -89,13 +111,13 @@ public class ComputeEngineWrapper {
     }
 
     /**
-     * Fires up the instance
-     *
-     * @param zoneName
-     * @param instanceName
+     * Synchronously starts the instance
+     * @param zoneName The zone the instance resides in
+     * @param instanceName The instance name
      * @throws IOException
      * @throws InterruptedException
-     * @throws ServiceException
+     * @throws ServiceException Thrown by the API if there was any issue starting the instance
+     * @throws MachinePoolExhaustedException Thrown if the instance couldn't be started cause there isn't enough resources in the pool
      */
     public void startInstance(String zoneName, String instanceName)
             throws IOException, InterruptedException, ServiceException, MachinePoolExhaustedException {
@@ -114,13 +136,12 @@ public class ComputeEngineWrapper {
     }
 
     /**
-     * Stops the instance
-     *
-     * @param zoneName
-     * @param instanceName
+     * Synchronously stops the instance
+     * @param zoneName The zone the instance resides in
+     * @param instanceName The instance name
      * @throws IOException
      * @throws InterruptedException
-     * @throws ServiceException
+     * @throws ServiceException Thrown by the API if there was any issue stopping the instance
      */
     public void stopInstance(String zoneName, String instanceName)
             throws IOException, InterruptedException, ServiceException {
@@ -131,7 +152,6 @@ public class ComputeEngineWrapper {
 
     /**
      * Wait until {@code operation} is completed.
-     *
      * @param compute   the {@code Compute} object
      * @param operation the operation returned by the original request
      * @param timeout   the timeout, in millis
@@ -141,7 +161,7 @@ public class ComputeEngineWrapper {
      * @throws IOException          if we had trouble connecting
      * @throws ServiceException
      */
-    public void blockUntilComplete(Operation operation, long timeout)
+    private void blockUntilComplete(Operation operation, long timeout)
             throws InterruptedException, IOException, ServiceException {
         long start = System.currentTimeMillis();
         final long pollInterval = 5 * 1000L;
@@ -174,6 +194,11 @@ public class ComputeEngineWrapper {
         }
     }
 
+    /**
+     * Converts an operation error to a thrown exception
+     * @param err
+     * @throws ServiceException
+     */
     private void throwOperationException(Error err) throws ServiceException {
         if (err.getErrors().size() == 0) {
             throw new ServiceException();

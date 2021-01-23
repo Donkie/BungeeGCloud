@@ -2,6 +2,9 @@ package donkie.bungeegcloud;
 
 import java.net.InetSocketAddress;
 
+/**
+ * Represents an IP:Port combination
+ */
 public class IPPort {
     private String ip;
     private int port;
