@@ -80,7 +80,11 @@ public class Events implements Listener {
             }
 
             if (!playerSent) {
-                event.getPlayer().disconnect(TextComponent.fromLegacyText("Failed to start server"));
+                if (error == null) {
+                    event.getPlayer().disconnect(TextComponent.fromLegacyText("Failed to start server"));
+                } else {
+                    event.getPlayer().disconnect(TextComponent.fromLegacyText(String.format("Failed to start server: %s", error.getClass().getCanonicalName())));
+                }
             }
         });
     }

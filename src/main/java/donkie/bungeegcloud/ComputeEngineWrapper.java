@@ -1,5 +1,6 @@
 package donkie.bungeegcloud;
 
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -30,11 +31,6 @@ import com.google.auth.oauth2.GoogleCredentials;
 public class ComputeEngineWrapper {
 
     /**
-     * GCloud json credentials file
-     */
-    private static final String GCLOUD_CREDENTIALS = "exhale-290316-d81df81f2dfd.json";
-
-    /**
      * Be sure to specify the name of your application. If the application name is
      * {@code null} or blank, the application will log a warning. Suggested format
      * is "MyCompany-ProductName/1.0".
@@ -51,13 +47,13 @@ public class ComputeEngineWrapper {
 
     private Compute compute;
 
-    public ComputeEngineWrapper(String projectId) throws GeneralSecurityException, IOException {
+    public ComputeEngineWrapper(String projectId, File credentialsFile) throws GeneralSecurityException, IOException {
         this.projectId = projectId;
 
         httpTransport = GoogleNetHttpTransport.newTrustedTransport();
 
         // Authenticate using Google Application Default Credentials.
-        GoogleCredentials credential = GoogleCredentials.fromStream(new FileInputStream(GCLOUD_CREDENTIALS));
+        GoogleCredentials credential = GoogleCredentials.fromStream(new FileInputStream(credentialsFile));
         if (credential.createScopedRequired()) {
             List<String> scopes = new ArrayList<>();
             // Set Google Cloud Storage scope to Full Control.

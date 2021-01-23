@@ -22,9 +22,6 @@ public class InstanceWrapper {
     private ComputeEngineWrapper compute;
     private Logger logger;
 
-    private static final Set<String> ZONES = new HashSet<String>(
-            Arrays.asList("europe-west2-a", "europe-west2-b", "europe-west2-c"));
-
     public InstanceWrapper(String name, ComputeEngineWrapper compute, Logger logger) {
         this.name = name;
         this.compute = compute;

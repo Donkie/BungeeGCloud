@@ -1,5 +1,6 @@
 package donkie.bungeegcloud;
 
+import java.io.File;
 import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.util.concurrent.TimeUnit;
@@ -9,6 +10,9 @@ import net.md_5.bungee.api.Callback;
 import net.md_5.bungee.api.config.ServerInfo;
 import net.md_5.bungee.api.plugin.Plugin;
 import net.md_5.bungee.api.scheduler.ScheduledTask;
+import net.md_5.bungee.config.Configuration;
+import net.md_5.bungee.config.ConfigurationProvider;
+import net.md_5.bungee.config.YamlConfiguration;
 import query.MCQuery;
 import query.QueryResponse;
 
@@ -58,7 +62,7 @@ public class BungeeGCloud extends Plugin {
             int onlinePlayers = serverStatus.getOnlinePlayers();
             if (onlinePlayers == 0 && stopServerTask == null) {
                 getLogger()
-                        .info(String.format("No players online. Stopping server in %d seconds...", STOP_SERVER_DELAY));
+                        .info(String.format("No players online. Stopping server in %d seconds...", idleServerStopwait));
                 startStopTask();
             } else if (onlinePlayers > 0 && stopServerTask != null) {
                 getLogger().info("Players now online, aborting stop.");
@@ -69,23 +73,21 @@ public class BungeeGCloud extends Plugin {
 
     private ComputeEngineWrapper compute;
 
-    private static final String PROJECT_ID = "exhale-290316";
-    private static final String INSTANCE_NAME = "minecraft-1";
-    private static final int SERVER_PORT = 25565;
+    private int minecraftPort;
 
     /**
      * How often we should check for if there are any players online
      */
-    private static final int SERVER_PLAYERS_CHECK_PERIOD = 5;
+    private int refreshPlayersPeriod;
 
     /**
      * How long we should wait until stopping the server after last player left
      */
-    private static final long STOP_SERVER_DELAY = 30L;// 5 * 60L
+    private long idleServerStopwait;
 
     private ScheduledTask stopServerTask = null;
 
-    private ServerStatus serverStatus = new ServerStatus(20, "Welcome to Exhale!");
+    private ServerStatus serverStatus;
 
     private boolean serverStarting = false;
 
@@ -93,23 +95,56 @@ public class BungeeGCloud extends Plugin {
 
     @Override
     public void onEnable() {
+        Configuration configuration;
+        try{
+            if (!getDataFolder().exists())
+                getDataFolder().mkdir();
+
+            configuration = ConfigurationProvider.getProvider(YamlConfiguration.class).load(new File(getDataFolder(), "config.yml"));
+        } catch (IOException e){
+            getLogger().log(Level.SEVERE, "Failed to load config, is config.yml missing?", e);
+            return;
+        }
+
+        Configuration computeConfig = configuration.getSection("compute");
+        String projectId = computeConfig.getString("project_id");
+        String instanceName = computeConfig.getString("instance_id");
+
+        Configuration minecraftConfig = configuration.getSection("minecraft");
+        minecraftPort = minecraftConfig.getInt("port");
+
+        Configuration minecraftDefaultsConfig = minecraftConfig.getSection("default");
+        String defaultMOTD = minecraftDefaultsConfig.getString("motd");
+        int defaultMaxPlayers = minecraftDefaultsConfig.getInt("max_players");
+        serverStatus = new ServerStatus(defaultMaxPlayers, defaultMOTD);
+
+        idleServerStopwait = configuration.getLong("idle_server_stopwait");
+        refreshPlayersPeriod = configuration.getInt("refresh_players_period");
+
+        if(projectId.isEmpty() || instanceName.isEmpty() || minecraftPort == 0 || defaultMOTD.isEmpty() || defaultMaxPlayers == 0 || refreshPlayersPeriod == 0){
+            getLogger().log(Level.SEVERE, "Failed to load config, some config items are missing!");
+            return;
+        }
+
         try {
-            compute = new ComputeEngineWrapper(PROJECT_ID);
+            File credentialsFile = new File(getDataFolder(), "credentials.json");
 
-            instance = new InstanceWrapper(INSTANCE_NAME, compute, getLogger());
+            compute = new ComputeEngineWrapper(projectId, credentialsFile);
+
+            instance = new InstanceWrapper(instanceName, compute, getLogger());
             instance.fetchZone();
-
-            getProxy().getScheduler().schedule(this, new ServerQueryRunnable(), 1, SERVER_PLAYERS_CHECK_PERIOD,
-                    TimeUnit.SECONDS);
-            getProxy().getPluginManager().registerListener(this, new Events(this));
         } catch (GeneralSecurityException | IOException e) {
             getLogger().log(Level.SEVERE, "Failed to setup compute engine", e);
+            return;
         }
+
+        getProxy().getScheduler().schedule(this, new ServerQueryRunnable(), 1, refreshPlayersPeriod, TimeUnit.SECONDS);
+        getProxy().getPluginManager().registerListener(this, new Events(this));
     }
 
     public boolean isServerRunning() {
         try {
-            MCQuery query = new MCQuery(instance.getIp(), SERVER_PORT);
+            MCQuery query = new MCQuery(instance.getIp(), minecraftPort);
             query.basicStat();
             return true;
         } catch (NotOnlineException | IOException e) {
@@ -122,7 +157,7 @@ public class BungeeGCloud extends Plugin {
     }
 
     public ServerInfo getServerInfo() throws NotOnlineException {
-        return getServerInfo(new IPPort(instance.getIp(), SERVER_PORT));
+        return getServerInfo(new IPPort(instance.getIp(), minecraftPort));
     }
 
     public ServerInfo getServerInfo(IPPort ipport) {
@@ -145,7 +180,7 @@ public class BungeeGCloud extends Plugin {
     }
 
     public int getServerPort() {
-        return SERVER_PORT;
+        return minecraftPort;
     }
 
     public void startStopTask() {
@@ -165,7 +200,7 @@ public class BungeeGCloud extends Plugin {
             } catch (IOException | InterruptedException | ComputeException e) {
                 getLogger().log(Level.SEVERE, "Failed to stop the instance", e);
             }
-        }, STOP_SERVER_DELAY, TimeUnit.SECONDS);
+        }, idleServerStopwait, TimeUnit.SECONDS);
     }
 
     public void cancelStopTask() {
