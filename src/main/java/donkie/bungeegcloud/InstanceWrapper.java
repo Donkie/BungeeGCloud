@@ -37,8 +37,13 @@ public class InstanceWrapper {
     }
 
     public void updateRunningStatus() throws IOException {
-        running = isRunningStatus(fetchInstance().getStatus());
-        if (!running) {
+        Instance instance = fetchInstance();
+        running = isRunningStatus(instance.getStatus());
+        if (running && ip == null) {
+            // This can happen if the instance is started by something else, that means we need to fetch the ip now
+            ip = getInstanceExternalIP(instance);
+        }
+        else if (!running) {
             ip = null;
         }
     }
