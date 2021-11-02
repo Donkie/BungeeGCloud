@@ -1,0 +1,3 @@
+[submodule "src/Minecraft-Status-Query"]
+	path = src/Minecraft-Status-Query
+	url = https://github.com/rmmccann/Minecraft-Status-Query
