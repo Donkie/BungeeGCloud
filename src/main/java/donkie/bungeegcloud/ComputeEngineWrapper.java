@@ -18,12 +18,17 @@ import com.google.api.services.compute.Compute;
 import com.google.api.services.compute.Compute.Instances.AggregatedList;
 import com.google.api.services.compute.ComputeScopes;
 import com.google.api.services.compute.model.AccessConfig;
+import com.google.api.services.compute.model.AttachedDisk;
 import com.google.api.services.compute.model.Instance;
 import com.google.api.services.compute.model.InstanceAggregatedList;
 import com.google.api.services.compute.model.InstancesScopedList;
 import com.google.api.services.compute.model.NetworkInterface;
 import com.google.api.services.compute.model.Operation;
 import com.google.api.services.compute.model.Operation.Error;
+import com.google.api.services.compute.model.Disk;
+import com.google.api.services.compute.model.DiskList;
+import com.google.api.services.compute.model.Snapshot;
+import com.google.api.services.compute.model.SnapshotList;
 import com.google.auth.http.HttpCredentialsAdapter;
 import com.google.auth.oauth2.GoogleCredentials;
 
@@ -49,8 +54,10 @@ public class ComputeEngineWrapper {
 
     /**
      * Initializes the API with the credentialsFile for authorization
-     * @param projectId The project id, such as "test-123456"
-     * @param credentialsFile File handle to the json file containing credentials to a Google Cloud service account
+     *
+     * @param projectId       The project id, such as "test-123456"
+     * @param credentialsFile File handle to the json file containing credentials to
+     *                        a Google Cloud service account
      * @throws GeneralSecurityException
      * @throws IOException
      */
@@ -77,8 +84,260 @@ public class ComputeEngineWrapper {
     }
 
     /**
-     * Synchronously retrieves an Instance object from zone and name using the service API
-     * @param zoneName The zone name
+     * Deletes the snapshot
+     * @param snapshotName
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void deleteSnapshot(String snapshotName) throws IOException, InterruptedException, ServiceException {
+        Compute.Snapshots.Delete deleter = compute.snapshots().delete(projectId, snapshotName);
+        Operation op = deleter.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
+     * Returns the corresponding snapshot name for a disk name
+     * @param diskName
+     * @return
+     */
+    public String getSnapshotName(String diskName) {
+        return "bungeegcloud-" + diskName;
+    }
+
+    /**
+     * Creates a new snapshot based on the disk
+     * @param zoneName
+     * @param diskName
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void makeSnapshot(String zoneName, String diskName)
+            throws IOException, InterruptedException, ServiceException {
+        Snapshot snapshotRequest = new Snapshot();
+        snapshotRequest.setName(getSnapshotName(diskName));
+
+        Compute.Disks.CreateSnapshot request = compute.disks().createSnapshot(projectId, zoneName, diskName,
+                snapshotRequest);
+        Operation op = request.execute();
+
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
+     * Returns wether the disk exists or not
+     * @param zoneName
+     * @param diskName
+     * @return
+     * @throws IOException
+     */
+    public boolean diskExists(String zoneName, String diskName) throws IOException {
+        Compute.Disks.List lister = compute.disks().list(projectId, zoneName);
+        DiskList response;
+        do {
+            response = lister.execute();
+            if (response.getItems() == null) {
+                continue;
+            }
+            for (Disk disk : response.getItems()) {
+                if (disk.getName().equals(diskName))
+                    return true;
+            }
+            lister.setPageToken(response.getNextPageToken());
+        } while (response.getNextPageToken() != null);
+        return false;
+    }
+
+    /**
+     * Returns whether the snapshot exists or not
+     * @param snapshotName
+     * @return
+     * @throws IOException
+     */
+    public boolean snapshotExists(String snapshotName) throws IOException {
+        Compute.Snapshots.List lister = compute.snapshots().list(projectId);
+        SnapshotList response;
+        do {
+            response = lister.execute();
+            if (response.getItems() == null) {
+                continue;
+            }
+            for (Snapshot snapshot : response.getItems()) {
+                if (snapshot.getName().equals(snapshotName))
+                    return true;
+            }
+            lister.setPageToken(response.getNextPageToken());
+        } while (response.getNextPageToken() != null);
+        return false;
+    }
+
+    /**
+     * Deletes a disk
+     * @param zoneName
+     * @param diskName
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void deleteDisk(String zoneName, String diskName)
+            throws IOException, InterruptedException, ServiceException {
+        Compute.Disks.Delete deleter = compute.disks().delete(projectId, zoneName, diskName);
+        Operation op = deleter.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
+     * Creates a new disk (SSD) based on a snapshot
+     * @param zoneName
+     * @param diskName
+     * @param snapshotName
+     * @param diskSizeGb
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void makeDiskFromSnapshot(String zoneName, String diskName, String snapshotName, long diskSizeGb)
+            throws IOException, InterruptedException, ServiceException {
+        Disk diskRequest = new Disk();
+        diskRequest.setSourceSnapshot("global/snapshots/" + snapshotName);
+        diskRequest.setSizeGb(diskSizeGb);
+        diskRequest.setName(diskName);
+        diskRequest.setType("projects/" + projectId + "/zones/" + zoneName + "/diskTypes/pd-ssd"); // TODO: add config
+                                                                                                   // to let you pick
+                                                                                                   // the disk type here
+
+        Compute.Disks.Insert inserter = compute.disks().insert(projectId, zoneName, diskRequest);
+        Operation op = inserter.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
+     * Returns the internal device name of the disk attached to the instance
+     * @param zoneName
+     * @param instanceName
+     * @param diskName
+     * @return
+     * @throws IOException
+     */
+    public String getDeviceNameOfDisk(String zoneName, String instanceName, String diskName) throws IOException{
+        String partialURL = "projects/" + projectId + "/zones/" + zoneName + "/disks/" + diskName;
+        Instance instance = getInstance(zoneName, instanceName);
+        List<AttachedDisk> disks = instance.getDisks();
+        if(disks == null || disks.isEmpty())
+            throw new IOException("No disks are attached to instance " + instanceName);
+        for (AttachedDisk attachedDisk : disks) {
+            if(attachedDisk.getSource().endsWith(partialURL))
+                return attachedDisk.getDeviceName();
+        }
+        throw new IOException("No disk named " + diskName + " was found attached to instance " + instanceName);
+    }
+
+    /**
+     * Detaches the disk from the instance
+     * @param zoneName
+     * @param instanceName
+     * @param diskName
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void detachDiskFromInstance(String zoneName, String instanceName, String diskName)
+            throws IOException, InterruptedException, ServiceException {
+        String deviceName = getDeviceNameOfDisk(zoneName, instanceName, diskName);
+        Compute.Instances.DetachDisk detacher = compute.instances().detachDisk(projectId, zoneName, instanceName, deviceName);
+        Operation op = detacher.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
+     * Attaches the disk as a boot disk to the instance
+     * @param zoneName
+     * @param instanceName
+     * @param diskName
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void attachDiskToInstance(String zoneName, String instanceName, String diskName)
+            throws IOException, InterruptedException, ServiceException {
+        AttachedDisk diskRequest = new AttachedDisk();
+        diskRequest.setAutoDelete(false);
+        diskRequest.setBoot(true);
+        diskRequest.setSource("projects/" + projectId + "/zones/" + zoneName + "/disks/" + diskName);
+
+        Compute.Instances.AttachDisk attacher = compute.instances().attachDisk(projectId, zoneName, instanceName,
+                diskRequest);
+        Operation op = attacher.execute();
+        blockUntilComplete(op, 5 * 60 * 1000L);
+    }
+
+    /**
+     * Returns wether the instance has any disk attached or not
+     * @param zoneName
+     * @param instanceName
+     * @return Instance has a disk attached
+     * @throws IOException
+     */
+    public boolean instanceHasDisk(String zoneName, String instanceName) throws IOException{
+        Instance instance = getInstance(zoneName, instanceName);
+        List<AttachedDisk> disks = instance.getDisks();
+        return disks != null && !disks.isEmpty();
+    }
+
+    /**
+     * The opposite of wakeInstanceDisk, creates a new snapshot from the disk, detaches the disk from the VM instance and then deletes the disk.
+     * @param zoneName
+     * @param instanceName
+     * @param diskName
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void sleepInstanceDisk(String zoneName, String instanceName, String diskName)
+            throws IOException, InterruptedException, ServiceException {
+
+        String snapshotName = getSnapshotName(diskName);
+        if(snapshotExists(snapshotName)){
+            deleteSnapshot(snapshotName);
+        }
+
+        makeSnapshot(zoneName, diskName);
+
+        detachDiskFromInstance(zoneName, instanceName, diskName);
+
+        deleteDisk(zoneName, diskName);
+    }
+
+    /**
+     * The opposite of sleepInstanceDisk, creates a new disk (SSD) from an existing snapshot and then attaches it to the VM instance.
+     * Snapshot name needs to be "bungeegcloud-<diskname>"
+     * Assumes the snapshot exists, will error otherwise
+     * @param zoneName
+     * @param instanceName
+     * @param diskName
+     * @param diskSizeGb The desired size of the disk
+     * @throws IOException
+     * @throws InterruptedException
+     * @throws ServiceException
+     */
+    public void wakeInstanceDisk(String zoneName, String instanceName, String diskName, long diskSizeGb)
+            throws IOException, InterruptedException, ServiceException {
+
+        if(!diskExists(zoneName, diskName)){
+            makeDiskFromSnapshot(zoneName, diskName, getSnapshotName(diskName), diskSizeGb);
+        }
+
+        if(!instanceHasDisk(zoneName, instanceName)){
+            attachDiskToInstance(zoneName, instanceName, diskName);
+        }
+    }
+
+    /**
+     * Synchronously retrieves an Instance object from zone and name using the
+     * service API
+     *
+     * @param zoneName     The zone name
      * @param instanceName The instance name
      * @return The Instance object
      * @throws IOException
@@ -90,10 +349,12 @@ public class ComputeEngineWrapper {
 
     /**
      * Synchronously retrieves the zone id of the specified instance.
+     *
      * @param instanceName The instance name
      * @return The zone id
      * @throws IOException
-     * @throws FileNotFoundException Thrown if the specified instance wasn't found in the project.
+     * @throws FileNotFoundException Thrown if the specified instance wasn't found
+     *                               in the project.
      */
     public String getInstanceZone(String instanceName) throws IOException {
         AggregatedList lister = compute.instances().aggregatedList(projectId);
@@ -114,12 +375,16 @@ public class ComputeEngineWrapper {
 
     /**
      * Synchronously starts the instance
-     * @param zoneName The zone the instance resides in
+     *
+     * @param zoneName     The zone the instance resides in
      * @param instanceName The instance name
      * @throws IOException
      * @throws InterruptedException
-     * @throws ServiceException Thrown by the API if there was any issue starting the instance
-     * @throws MachinePoolExhaustedException Thrown if the instance couldn't be started cause there isn't enough resources in the pool
+     * @throws ServiceException              Thrown by the API if there was any
+     *                                       issue starting the instance
+     * @throws MachinePoolExhaustedException Thrown if the instance couldn't be
+     *                                       started cause there isn't enough
+     *                                       resources in the pool
      */
     public void startInstance(String zoneName, String instanceName)
             throws IOException, InterruptedException, ServiceException, MachinePoolExhaustedException {
@@ -139,11 +404,13 @@ public class ComputeEngineWrapper {
 
     /**
      * Synchronously stops the instance
-     * @param zoneName The zone the instance resides in
+     *
+     * @param zoneName     The zone the instance resides in
      * @param instanceName The instance name
      * @throws IOException
      * @throws InterruptedException
-     * @throws ServiceException Thrown by the API if there was any issue stopping the instance
+     * @throws ServiceException     Thrown by the API if there was any issue
+     *                              stopping the instance
      */
     public void stopInstance(String zoneName, String instanceName)
             throws IOException, InterruptedException, ServiceException {
@@ -154,6 +421,7 @@ public class ComputeEngineWrapper {
 
     /**
      * Wait until {@code operation} is completed.
+     *
      * @param compute   the {@code Compute} object
      * @param operation the operation returned by the original request
      * @param timeout   the timeout, in millis
@@ -198,6 +466,7 @@ public class ComputeEngineWrapper {
 
     /**
      * Converts an operation error to a thrown exception
+     *
      * @param err
      * @throws ServiceException
      */
@@ -213,6 +482,7 @@ public class ComputeEngineWrapper {
 
     /**
      * Returns whether the Instance is running or not
+     *
      * @param instance The instance
      * @return Is running
      */
@@ -220,31 +490,35 @@ public class ComputeEngineWrapper {
         return isRunningStatus(instance.getStatus());
     }
 
-	/**
-	 * Returns whether the supplied Cloud Compute String instance status indicates a running or not running status
-	 * @param status The String status, such as "STOPPING"
-	 * @return If it is a status indicating running or not
-	 */
-	private static boolean isRunningStatus(String status) {
-	    return !(status.equals("STOPPING") || status.equals("SUSPENDING") || status.equals("SUSPENDED")
-	            || status.equals("TERMINATED"));
-	}
+    /**
+     * Returns whether the supplied Cloud Compute String instance status indicates a
+     * running or not running status
+     *
+     * @param status The String status, such as "STOPPING"
+     * @return If it is a status indicating running or not
+     */
+    private static boolean isRunningStatus(String status) {
+        return !(status.equals("STOPPING") || status.equals("SUSPENDING") || status.equals("SUSPENDED")
+                || status.equals("TERMINATED"));
+    }
 
-	/**
-	 * Gets the external IP of the Instance object
-	 * @param instance The Instance object
-	 * @return The external IP
-	 * @throws IOException
-	 * @throws FileNotFoundException Thrown if no external IP was found for the Instance
-	 */
-	public static String getExternalIP(Instance instance) throws IOException {
-	    for (NetworkInterface nif : instance.getNetworkInterfaces()) {
-	        for (AccessConfig conf : nif.getAccessConfigs()) {
-	            if (conf.getType().equals("ONE_TO_ONE_NAT") && conf.getName().equals("External NAT")) {
-	                return conf.getNatIP();
-	            }
-	        }
-	    }
-	    throw new FileNotFoundException("No external IP found for this instance");
-	}
+    /**
+     * Gets the external IP of the Instance object
+     *
+     * @param instance The Instance object
+     * @return The external IP
+     * @throws IOException
+     * @throws FileNotFoundException Thrown if no external IP was found for the
+     *                               Instance
+     */
+    public static String getExternalIP(Instance instance) throws IOException {
+        for (NetworkInterface nif : instance.getNetworkInterfaces()) {
+            for (AccessConfig conf : nif.getAccessConfigs()) {
+                if (conf.getType().equals("ONE_TO_ONE_NAT") && conf.getName().equals("External NAT")) {
+                    return conf.getNatIP();
+                }
+            }
+        }
+        throw new FileNotFoundException("No external IP found for this instance");
+    }
 }

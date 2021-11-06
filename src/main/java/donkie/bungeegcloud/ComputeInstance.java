@@ -19,6 +19,12 @@ public class ComputeInstance implements Machine {
     /** The instance zone */
     private String zone;
 
+    /** The boot disk associated with the instance */
+    private String diskName;
+
+    /** The size of the boot disk associated with the instance */
+    private long diskSizeGb;
+
     /** The external IP address of the instance */
     private String ip = null;
 
@@ -39,6 +45,8 @@ public class ComputeInstance implements Machine {
             throws IOException, GeneralSecurityException {
         String projectId = computeConfig.getString("project_id");
         this.name = computeConfig.getString("instance_id");
+        this.diskName = computeConfig.getString("disk_name");
+        this.diskSizeGb = computeConfig.getLong("disk_size_gb");
         this.compute = new ComputeEngineWrapper(projectId, new File(dataFolder, "credentials.json"));
 
         fetchZone();
@@ -124,6 +132,7 @@ public class ComputeInstance implements Machine {
      */
     @Override
     public void start() throws IOException, InterruptedException, ServiceException, MachinePoolExhaustedException {
+        compute.wakeInstanceDisk(zone, name, diskName, diskSizeGb);
         compute.startInstance(zone, name);
         ip = ComputeEngineWrapper.getExternalIP(fetchInstance());
         running = true;
@@ -140,5 +149,6 @@ public class ComputeInstance implements Machine {
         running = false;
         ip = null;
         compute.stopInstance(zone, name);
+        compute.sleepInstanceDisk(zone, name, diskName);
     }
 }
